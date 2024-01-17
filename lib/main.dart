@@ -71,7 +71,6 @@ class MyApp extends StatelessWidget {
             // extensions: [darkCustomColors],
           ),
           themeMode: ThemeMode.system,
-          //TODO localisations
           home: const MyHomePage(),
         );
       },
@@ -115,6 +114,19 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
+    asyncInit();
+  }
+
+  dispose() {
+    super.dispose();
+    _intentDataStreamSubscription.cancel();
+    playerStateSubscription.cancel();
+    playerDurationSubscription.cancel();
+  }
+
+  void asyncInit() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+
     // For sharing images coming from outside the app while the app is in the memory
     _intentDataStreamSubscription = FlutterSharingIntent.instance.getMediaStream().listen((List<SharedFile> value) {
       newFile(value.firstOrNull?.value);
@@ -147,17 +159,6 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     });
 
-    asyncInit();
-  }
-
-  dispose() {
-    super.dispose();
-    _intentDataStreamSubscription.cancel();
-    playerStateSubscription.cancel();
-    playerDurationSubscription.cancel();
-  }
-
-  void asyncInit() async {
     openAIKey = await storage.read(key: "openAIKey");
     await initializeOpenAI();
     setState(() {
@@ -288,7 +289,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void shorten() async {
-    if (transcription == null) {
+    if (transcription == null || transcription!.isEmpty) {
       setState(() {
         shortened = null;
       });
@@ -339,7 +340,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void summarize() async {
-    if (transcription == null) {
+    if (transcription == null || transcription!.isEmpty) {
       setState(() {
         summary = null;
       });
@@ -353,9 +354,11 @@ class _MyHomePageState extends State<MyHomePage> {
       messages: [
         OpenAIChatCompletionChoiceMessageModel(
           content: [
-            OpenAIChatCompletionChoiceMessageContentItemModel.text("""Sumamrize the following transcription of a voice message in the same language.
+            OpenAIChatCompletionChoiceMessageContentItemModel.text("""Summarize the following transcription of a voice message in the same language.
+            Do not change the language!
                 Keep the most important information and shorten the text as much as possible.
-                Keep the language the same."""),
+                Keep the language the same.
+                Nutze dieselbe Sprache wie die Sprachnachricht."""),
           ],
           role: OpenAIChatMessageRole.system,
         ),
@@ -547,9 +550,25 @@ class _MyHomePageState extends State<MyHomePage> {
                                               ),
                                             ),
                                             padding: const EdgeInsets.all(4.0),
-                                            child: Text(
-                                              "${selectedTextString!.split(RegExp("[\\.\\ \\!\\n\\?\\,]+")).length} words | ${selectedTextString.length} characters",
-                                              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                SizedBox(
+                                                  height: 24,
+                                                  width: 24,
+                                                  child: IconButton(
+                                                    onPressed: () {
+                                                      [transcribe, shorten, summarize][selectedText]();
+                                                    },
+                                                    icon: const Icon(Icons.refresh, size: 10,),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  "${selectedTextString!.split(RegExp("[\\.\\ \\!\\n\\?\\,]+")).length} words | ${selectedTextString.length} characters",
+                                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         )
@@ -627,20 +646,25 @@ class _MyHomePageState extends State<MyHomePage> {
                           return AlertDialog(
                             icon: const Icon(Icons.text_fields),
                             title: const Text("Text Model"),
-                            content: DropdownButton<String>(
-                              value: model,
-                              onChanged: (String? newValue) {
-                                setState(() {
-                                  model = newValue;
-                                });
-                                storage.write(key: "textModel", value: newValue);
-                              },
-                              items: models.where((element) => element.id.startsWith("gpt")).map<DropdownMenuItem<String>>((OpenAIModelModel value) {
-                                return DropdownMenuItem<String>(
-                                  value: value.id,
-                                  child: Text(value.id),
+                            content: StatefulBuilder(
+                              builder: (context, setInnerState) {
+                                return DropdownButton<String>(
+                                  value: model,
+                                  onChanged: (String? newValue) {
+                                    setState(() {
+                                      model = newValue;
+                                    });
+                                    setInnerState(() {});
+                                    storage.write(key: "textModel", value: newValue);
+                                  },
+                                  items: models.where((element) => element.id.startsWith("gpt")).map<DropdownMenuItem<String>>((OpenAIModelModel value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value.id,
+                                      child: Text(value.id),
+                                    );
+                                  }).toList(),
                                 );
-                              }).toList(),
+                              },
                             ),
                           );
                         },
